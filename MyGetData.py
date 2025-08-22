@@ -15,6 +15,7 @@ from PyDAQmx.DAQmxConstants import *
 from RaspberryInterface import RaspberryInterface
 from MyMerger import Files_merge
 from openpyxl import load_workbook
+from openpyxl.utils import column_index_from_string, get_column_letter
 import tkinter as tk
 from tkinter import filedialog, simpledialog
 
@@ -340,15 +341,50 @@ class MainWindow(QWidget):
         
     def add_experiment_row(self):
         """Add a new row to ExpsDescription.xlsx with the experiment data"""
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.root.lift()
+        self.root.attributes("-topmost", True)
+        
+        # Request experiments directory
+        print("Please select the experiments directory.")
+        self.exps_dir = filedialog.askdirectory(title="Select Experiments Directory")
+        if not self.exps_dir:
+            print("No directory selected. Exiting.")
+            sys.exit(0)
+        self.exps_dir = os.path.normpath(self.exps_dir)
+        
         excel_path = os.path.join(self.exps_dir, "ExpsDescription.xlsx")
         
         if os.path.exists(excel_path):
             wb = load_workbook(excel_path)
             ws = wb.active
+            if not ws.tables:
+                print(f"Could not save the experiment row because the Excel file {excel_path} has no tables.")
+                return
         else:
             print(f"Could not save the experiment row because the Excel file {excel_path} was not found.")
             return
         
+        table_name = list(ws.tables.keys())[0]
+        table = ws.tables[table_name]
+        start_cell, end_cell = table.ref.split(":")
+        start_col = "".join(filter(str.isalpha, start_cell))
+        start_row = int("".join(filter(str.isdigit, start_cell)))
+        end_col = "".join(filter(str.isalpha, end_cell))
+        end_row = int("".join(filter(str.isdigit, end_cell)))
+        
+        start_col_idx = column_index_from_string(start_col)
+        end_col_idx = column_index_from_string(end_col)
+        
+        for row_idx in range(start_row, end_row + 1):
+            row_cells = ws[row_idx]
+            if all(cell.value in (None, "") for cell in row_cells[start_col_idx - 1:end_col_idx]):
+                first_empty_row = row_idx
+                break
+        else:
+            first_empty_row = end_row + 1
+            
         new_row = [
             self.exp_id,
             self.tribu_id,
@@ -357,9 +393,25 @@ class MainWindow(QWidget):
             self.motor_file,
             "",
             self.rload_id
-        ] + [""] * 23  # empty columns to fill remaining cells
+        ] + [""] * 23  # empty columns to fill with blank spaces
+        
+        for i, value in enumerate(new_row, start=start_col_idx):
+            ws.cell(row=first_empty_row, column=i, value=value)
+        
+        new_end_row = max(end_row, first_empty_row)
+        if new_end_row != end_row:
+            new_ref = f"{start_col}{start_row}:{end_col}{new_end_row}"
+            table.ref = new_ref
+        
+        for col_idx in range(start_col_idx, end_col_idx + 1):
+            column_letter = get_column_letter(col_idx)
+            max_length = 0
+            for row in range(start_row, end_row + 1):
+                cell = ws.cell(row=row, column=col_idx)
+                if cell.value:
+                    max_length = max(max_length, len(str(cell.value)))
+            ws.column_dimensions[column_letter].width = max_length + 1
 
-        ws.append(new_row)
         wb.save(excel_path)
     
     
