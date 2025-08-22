@@ -359,8 +359,8 @@ class MainWindow(QWidget):
             self.rload_id
         ] + [""] * 23  # empty columns to fill remaining cells
 
-ws.append(new_row)
-wb.save(excel_path)
+        ws.append(new_row)
+        wb.save(excel_path)
     
     
 # ---------------- DIGITAL IO TASKS ----------------
