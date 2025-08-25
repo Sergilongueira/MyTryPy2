@@ -53,9 +53,9 @@ class BufferProcessor(QObject):
             self.timestamp = t[-1] + (t[1] - t[0])
             df = pd.DataFrame({
                 "Time (s)": t,
-                "Signal": data[:, 2],
-                "LINMOT_ENABLE": data[:, 0],
-                "LINMOT_UP_DOWN": data[:, 1]
+                "Signal": data[:, 2] - data[:, 0] - data[:, 1],
+                "LINMOT_ENABLE": np.where(data[:, 0] < 2, 0, 1),
+                "LINMOT_UP_DOWN": np.where(data[:, 1] < 2, 0, 1)
             })
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             df.to_pickle(f"{self.local_path}/DAQ_{timestamp}.pkl")
@@ -88,9 +88,9 @@ class DAQTask(Task):
         self.ReadAnalogF64(SAMPLES_PER_CALLBACK, 10.0, DAQmx_Val_GroupByScanNumber, data, data.size, byref(read), None)
 
         # Threshold digital channels
-        data[:, 0] = np.where(data[:, 0] < 2, 0, 1)
-        data[:, 1] = np.where(data[:, 1] < 2, 0, 1)
-        TENG_channel = data[:, 2]
+        # data[:, 0] = np.where(data[:, 0] < 2, 0, 1)
+        # data[:, 1] = np.where(data[:, 1] < 2, 0, 1)
+        TENG_channel = data[:, 2] - data[:, 0] - data[:, 1]
 
         # Update circular plot buffer
         self.plot_buffer[self.write_index:self.write_index + SAMPLES_PER_CALLBACK] = TENG_channel
