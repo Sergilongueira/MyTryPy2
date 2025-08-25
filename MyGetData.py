@@ -341,19 +341,6 @@ class MainWindow(QWidget):
         
     def add_experiment_row(self):
         """Add a new row to ExpsDescription.xlsx with the experiment data"""
-        self.root = tk.Tk()
-        self.root.withdraw()
-        self.root.lift()
-        self.root.attributes("-topmost", True)
-        
-        # Request experiments directory
-        print("Please select the experiments directory.")
-        self.exps_dir = filedialog.askdirectory(title="Select Experiments Directory")
-        if not self.exps_dir:
-            print("No directory selected. Exiting.")
-            sys.exit(0)
-        self.exps_dir = os.path.normpath(self.exps_dir)
-        
         excel_path = os.path.join(self.exps_dir, "ExpsDescription.xlsx")
         
         if os.path.exists(excel_path):
