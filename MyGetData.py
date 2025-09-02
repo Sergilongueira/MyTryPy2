@@ -306,19 +306,7 @@ class MainWindow(QWidget):
                 return
             
             self.date_now = datetime.now().strftime("%d%m%Y_%H%M%S")
-            
             self.exp_id = f"{self.date_now}-{self.tribu_id}-{self.rload_id}"
-            
-            os.makedirs(os.path.join(self.exp_dir, "RawData"), exist_ok=True)
-            self.processor.local_path = os.path.join(self.exp_dir, "RawData", self.exp_id)
-            os.makedirs(self.processor.local_path, exist_ok=True)
-            
-            self.processor.timestamp = 0
-            
-            self.remaining_seconds = self.timer_spinbox.value()
-            self.countdown_display.setText(f"Remaining time: {self.remaining_seconds} s")
-            self.measurement_timer.start(1000)  # 1 sec
-            self.should_save_data = False
 
             self.DO_task_PrepareRaspberry.set_line(1)
 
@@ -348,6 +336,17 @@ class MainWindow(QWidget):
                 return
             
             self.DO_task_RelayLine0.set_line(1)
+            
+            os.makedirs(os.path.join(self.exp_dir, "RawData"), exist_ok=True)
+            self.processor.local_path = os.path.join(self.exp_dir, "RawData", self.exp_id)
+            os.makedirs(self.processor.local_path, exist_ok=True)
+            
+            self.processor.timestamp = 0
+            
+            self.remaining_seconds = self.timer_spinbox.value()
+            self.countdown_display.setText(f"Remaining time: {self.remaining_seconds} s")
+            self.measurement_timer.start(1000)  # 1 sec
+            self.should_save_data = False
             
             self.task.index = 0
             self.DO_task_LinMotTrigger.set_line(1)
