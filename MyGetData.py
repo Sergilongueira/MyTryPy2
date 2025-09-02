@@ -22,6 +22,7 @@ from MyMerger import Files_merge
 
 # ---------------- CONFIG ----------------
 CHANNEL_TENG = "Dev1/ai2"
+CHANNEL_CURRENT = "Dev1/ai4"
 CHANNEL_LINMOT_ENABLE = "Dev1/ai0"
 CHANNEL_LINMOT_UP_DOWN = "Dev1/ai1"
 
@@ -54,9 +55,10 @@ class BufferProcessor(QObject):
             self.timestamp = t[-1] + (t[1] - t[0])
             df = pd.DataFrame({
                 "Time (s)": t,
-                "Signal": data[:, 0],
-                "LINMOT_ENABLE": np.where(data[:, 1] < 2, 0, 1),
-                "LINMOT_UP_DOWN": np.where(data[:, 2] < 2, 0, 1)
+                "Voltage": data[:, 0],
+                "Current": data[:, 1] / 499e3,
+                "LINMOT_ENABLE": np.where(data[:, 2] < 2, 0, 1),
+                "LINMOT_UP_DOWN": np.where(data[:, 3] < 2, 0, 1)
             })
             timestamp = time.strftime("%Y%m%d_%H%M%S")
             df.to_pickle(f"{self.local_path}/DAQ_{timestamp}.pkl")
@@ -71,12 +73,13 @@ class DAQTask(Task):
         self.write_index = 0
         self.processor_signal = processor_signal
 
-        self.buffer1 = np.empty((BUFFER_SIZE, 3))
-        self.buffer2 = np.empty((BUFFER_SIZE, 3))
+        self.buffer1 = np.empty((BUFFER_SIZE, 4))
+        self.buffer2 = np.empty((BUFFER_SIZE, 4))
         self.current_buffer = self.buffer1
         self.index = 0
         
         self.CreateAIVoltageChan(CHANNEL_TENG, "", DAQmx_Val_Diff, -10.0, 10.0, DAQmx_Val_Volts, None)
+        self.CreateAIVoltageChan(CHANNEL_CURRENT, "", DAQmx_Val_RSE, -10.0, 10.0, DAQmx_Val_Volts, None)
         self.CreateAIVoltageChan(CHANNEL_LINMOT_ENABLE, "", DAQmx_Val_RSE, -10.0, 10.0, DAQmx_Val_Volts, None)
         self.CreateAIVoltageChan(CHANNEL_LINMOT_UP_DOWN, "", DAQmx_Val_RSE, -10.0, 10.0, DAQmx_Val_Volts, None)
         
@@ -86,7 +89,7 @@ class DAQTask(Task):
 
     def EveryNCallback(self):
         try:
-            data = np.empty((SAMPLES_PER_CALLBACK, 3), dtype=np.float64)
+            data = np.empty((SAMPLES_PER_CALLBACK, 4), dtype=np.float64)
             read = c_int32()
             self.ReadAnalogF64(SAMPLES_PER_CALLBACK, 10.0, DAQmx_Val_GroupByScanNumber, data, data.size, byref(read), None)
             
@@ -183,6 +186,9 @@ class MainWindow(QWidget):
         # Digital IO tasks
         self.DO_task_LinMotTrigger = DigitalOutputTask(line="Dev1/port0/line7")
         self.DO_task_LinMotTrigger.StartTask()
+        
+        self.DO_task_RelayLine0 = DigitalOutputTask(line="Dev1/port0/line5")
+        self.DO_task_RelayLine0.StartTask()
 
         self.DO_task_PrepareRaspberry = DigitalOutputTask(line="Dev1/port0/line6")
         self.DO_task_PrepareRaspberry.StartTask()
@@ -223,6 +229,10 @@ class MainWindow(QWidget):
         self.DO_task_LinMotTrigger.set_line(0)
         self.DO_task_LinMotTrigger.StopTask()
         self.DO_task_LinMotTrigger.ClearTask()
+        
+        self.DO_task_RelayLine0.set_line(0)
+        self.DO_task_RelayLine0.StopTask()
+        self.DO_task_RelayLine0.ClearTask()
 
         self.DO_task_PrepareRaspberry.set_line(0)
         self.DO_task_PrepareRaspberry.StopTask()
@@ -256,6 +266,7 @@ class MainWindow(QWidget):
             
             self.DO_task_LinMotTrigger.set_line(0)
             self.DO_task_PrepareRaspberry.set_line(0)
+            self.DO_task_RelayLine0.set_line(0)
 
             if self.task.index != 0:
                 data = self.task.current_buffer[:self.task.index]
@@ -335,7 +346,9 @@ class MainWindow(QWidget):
                 self.DO_task_PrepareRaspberry.set_line(0)
                 print("\033[91mError loop counter overflow, raspberry is not responding\033[0m")
                 return
-
+            
+            self.DO_task_RelayLine0.set_line(1)
+            
             self.task.index = 0
             self.DO_task_LinMotTrigger.set_line(1)
             
@@ -411,7 +424,7 @@ class MainWindow(QWidget):
 
 # ---------------- DIGITAL IO TASKS ----------------
 class DigitalOutputTask(Task):
-    def __init__(self, line="Dev1/port0/line7"):
+    def __init__(self, line):
         super().__init__()
         self.CreateDOChan(line, "", DAQmx_Val_ChanForAllLines)
         self.set_line(0)
@@ -421,7 +434,7 @@ class DigitalOutputTask(Task):
         self.WriteDigitalLines(1, 1, 10.0, DAQmx_Val_GroupByChannel, data, None, None)
 
 class DigitalInputTask(Task):
-    def __init__(self, line="Dev1/port1/line0"):
+    def __init__(self, line):
         super().__init__()
         self.CreateDIChan(line, "", DAQmx_Val_ChanForAllLines)
 
