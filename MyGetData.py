@@ -19,6 +19,7 @@ from PyQt5.QtCore import Qt, QObject, pyqtSignal, QThread, QTimer, pyqtSlot
 from PyDAQmx import Task
 from RaspberryInterface import RaspberryInterface
 from MyMerger import Files_merge
+from pyqtgraph.parametertree import Parameter, ParameterTree
 
 # ---------------- CONFIG ----------------
 CHANNEL_TENG = "Dev1/ai2"
@@ -66,12 +67,13 @@ class BufferProcessor(QObject):
 
 # ---------------- DAQ TASK WITH CALLBACK ----------------
 class DAQTask(Task):
-    def __init__(self, plot_buffer, processor_signal):
+    def __init__(self, plot_buffer, processor_signal, data_column_selector):
         super().__init__()
 
         self.plot_buffer = plot_buffer
         self.write_index = 0
         self.processor_signal = processor_signal
+        self.data_column_selector = data_column_selector
 
         self.buffer1 = np.empty((BUFFER_SIZE, 4))
         self.buffer2 = np.empty((BUFFER_SIZE, 4))
@@ -93,7 +95,7 @@ class DAQTask(Task):
             read = c_int32()
             self.ReadAnalogF64(SAMPLES_PER_CALLBACK, 10.0, DAQmx_Val_GroupByScanNumber, data, data.size, byref(read), None)
             
-            self.plot_buffer[self.write_index:self.write_index + SAMPLES_PER_CALLBACK] = data[:, 0]
+            self.plot_buffer[self.write_index:self.write_index + SAMPLES_PER_CALLBACK] = data[:, self.data_column_selector.value()]
             self.write_index = (self.write_index + SAMPLES_PER_CALLBACK) % self.plot_buffer.size
             
             self.current_buffer[self.index:self.index + SAMPLES_PER_CALLBACK, :] = data
@@ -164,6 +166,12 @@ class MainWindow(QWidget):
         duration.addWidget(self.timer_label)
         duration.addWidget(self.timer_spinbox)
         
+        # Signal selector
+        self.param_group = Parameter.create(name='Select', type='int', value=0, limits=(0, 3))
+        self.tree = ParameterTree()
+        self.tree.setParameters(self.param_group, showTop=True)
+        self.layout.addWidget(self.tree)
+        
         self.layout.addWidget(self.button)
         self.layout.addWidget(self.plot_widget)
         self.layout.addLayout(duration)
@@ -181,7 +189,7 @@ class MainWindow(QWidget):
         self.processor.moveToThread(self.thread)
         self.thread.start()
 
-        self.task = DAQTask(self.plot_buffer, self.processor.process_buffer)
+        self.task = DAQTask(self.plot_buffer, self.processor.process_buffer, self.param_group)
         
         # Digital IO tasks
         self.DO_task_LinMotTrigger = DigitalOutputTask(line="Dev1/port0/line7")
@@ -306,22 +314,10 @@ class MainWindow(QWidget):
                 return
             
             self.date_now = datetime.now().strftime("%d%m%Y_%H%M%S")
-            
             self.exp_id = f"{self.date_now}-{self.tribu_id}-{self.rload_id}"
-            
-            os.makedirs(os.path.join(self.exp_dir, "RawData"), exist_ok=True)
-            self.processor.local_path = os.path.join(self.exp_dir, "RawData", self.exp_id)
-            os.makedirs(self.processor.local_path, exist_ok=True)
-            
-            self.processor.timestamp = 0
-            
-            self.remaining_seconds = self.timer_spinbox.value()
-            self.countdown_display.setText(f"Remaining time: {self.remaining_seconds} s")
-            self.measurement_timer.start(1000)  # 1 sec
-            self.should_save_data = False
 
             self.DO_task_PrepareRaspberry.set_line(1)
-
+            
             loop_counter = 0
             while loop_counter < 10000:
                 status_bit_0 = self.DI_task_Raspberry_status_0.read_line()
@@ -348,6 +344,17 @@ class MainWindow(QWidget):
                 return
             
             self.DO_task_RelayLine0.set_line(1)
+            
+            os.makedirs(os.path.join(self.exp_dir, "RawData"), exist_ok=True)
+            self.processor.local_path = os.path.join(self.exp_dir, "RawData", self.exp_id)
+            os.makedirs(self.processor.local_path, exist_ok=True)
+            
+            self.processor.timestamp = 0
+            
+            self.remaining_seconds = self.timer_spinbox.value()
+            self.countdown_display.setText(f"Remaining time: {self.remaining_seconds} s")
+            self.measurement_timer.start(1000)  # 1 sec
+            self.should_save_data = False
             
             self.task.index = 0
             self.DO_task_LinMotTrigger.set_line(1)
